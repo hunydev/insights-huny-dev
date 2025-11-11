@@ -120,11 +120,61 @@ const ensureDataUri = (raw?: string | null) => {
   return raw.startsWith('data:') ? raw : `data:image/jpeg;base64,${raw}`
 }
 
+const extractOpportunitySources = (items?: Array<Record<string, unknown>>) => {
+  if (!items) return []
+
+  const labels: string[] = []
+  const pushLabel = (value?: string | null) => {
+    if (!value) return
+    const trimmed = value.trim()
+    if (!trimmed) return
+    labels.push(trimmed)
+  }
+
+  items.forEach((rawItem) => {
+    if (!rawItem) return
+    const item = rawItem as Record<string, unknown>
+
+    const sourceLocation = item.sourceLocation as
+      | { url?: string; line?: number; column?: number }
+      | undefined
+    if (sourceLocation?.url) {
+      const line = typeof sourceLocation.line === 'number' ? `:${sourceLocation.line}` : ''
+      const column = typeof sourceLocation.column === 'number' ? `:${sourceLocation.column}` : ''
+      pushLabel(`${sourceLocation.url}${line}${column}`)
+    }
+
+    const source = item.source as { url?: string; type?: string } | string | undefined
+    if (typeof source === 'string') {
+      pushLabel(source)
+    } else if (source?.url) {
+      pushLabel(source.url)
+    }
+
+    if (typeof item.url === 'string') {
+      pushLabel(item.url)
+    }
+
+    const node = item.node as { selector?: string; snippet?: string } | undefined
+    if (node?.selector) {
+      pushLabel(node.selector)
+    } else if (node?.snippet) {
+      pushLabel(node.snippet)
+    }
+
+    if (typeof item.displayValue === 'string') {
+      pushLabel(item.displayValue)
+    }
+  })
+
+  return Array.from(new Set(labels)).slice(0, 4)
+}
+
 function App() {
   const [form, setForm] = useState<FormState>({
     url: '',
     strategy: 'mobile',
-    categories: ['performance'],
+    categories: [],
     locale: 'ko-KR',
     captchaToken: '',
   })
@@ -133,10 +183,13 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<PageSpeedResponse | null>(null)
   const [showScreenshotModal, setShowScreenshotModal] = useState(false)
+  const [showJsonModal, setShowJsonModal] = useState(false)
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError(null)
+    setShowJsonModal(false)
+    setShowScreenshotModal(false)
 
     if (!form.url.trim()) {
       setError('분석할 URL을 입력해주세요.')
@@ -271,11 +324,13 @@ function App() {
         title: audit.title ?? '기회',
         description: audit.description ?? '',
         savings: audit.details?.overallSavingsMs ?? 0,
+        sources: extractOpportunitySources(audit.details?.items),
       }))
   }, [result])
 
   const fetchTime =
     result?.lighthouseResult?.fetchTime ?? result?.analysisUTCTimestamp ?? undefined
+  const prettyResult = useMemo(() => (result ? JSON.stringify(result, null, 2) : ''), [result])
 
   return (
     <div className="insights-app">
@@ -283,10 +338,10 @@ function App() {
         <header className="insights-header">
           <div>
             <p className="insights-header__eyebrow">Google PageSpeed Insights</p>
-            <h1 className="insights-header__title">URL 성능 분석 & 스크린샷 뷰어</h1>
+            <h1 className="insights-header__title">사이트 성능 분석 &amp; 스크린샷 뷰어</h1>
             <p className="insights-header__subtitle">
-              GOOGLE_CLOUD_API_KEY를 통해 서버리스 프록시가 요청을 처리합니다. 분석 옵션을
-              조정하고, 주요 성능 지표와 전체 페이지 스크린샷을 한 번에 확인하세요.
+              분석 옵션을 조정하고 Google PageSpeed Insights의 핵심 지표와 전체 페이지 스크린샷을 한
+              번에 확인하세요.
             </p>
           </div>
         </header>
@@ -341,9 +396,7 @@ function App() {
                           const { checked, value } = event.target
                           setForm((prev) => ({
                             ...prev,
-                            categories: checked
-                              ? Array.from(new Set([...prev.categories, value]))
-                              : prev.categories.filter((item) => item !== value),
+                            categories: checked ? [value] : [],
                           }))
                         }}
                       />
@@ -402,12 +455,14 @@ function App() {
                   setForm({
                     url: '',
                     strategy: 'mobile',
-                    categories: ['performance'],
+                    categories: [],
                     locale: 'ko-KR',
                     captchaToken: '',
                   })
                   setResult(null)
                   setError(null)
+                  setShowJsonModal(false)
+                  setShowScreenshotModal(false)
                 }}
                 disabled={loading}
               >
@@ -418,14 +473,27 @@ function App() {
         </section>
 
         {error && <p className="status status--error">{error}</p>}
-        {loading && !error && <p className="status">Google Lighthouse 분석을 불러오는 중입니다...</p>}
+        {loading && !error && (
+          <p className="status">Google Lighthouse 분석을 불러오는 중입니다...</p>
+        )}
 
         {result && !loading && (
           <section className="results">
-            {fetchTime && (
-              <p className="results__meta">
-                최근 분석 시각: {new Date(fetchTime).toLocaleString()} (UTC 기준)
-              </p>
+            {(fetchTime || result) && (
+              <div className="results__meta-bar">
+                {fetchTime && (
+                  <p className="results__meta">
+                    최근 분석 시각: {new Date(fetchTime).toLocaleString()} (UTC 기준)
+                  </p>
+                )}
+                <button
+                  type="button"
+                  className="button button--ghost button--compact"
+                  onClick={() => setShowJsonModal(true)}
+                >
+                  응답 데이터(JSON)
+                </button>
+              </div>
             )}
 
             {screenshotSrc && (
@@ -437,7 +505,7 @@ function App() {
                   <div className="screenshot-panel__body">
                     <h2>전체 페이지 스크린샷</h2>
                     <p>
-                      썸네일은 1600:900 비율에 맞춰 잘라서 보여줍니다. {' '}
+                      썸네일은 1600:900 비율에 맞춰 잘라서 보여줍니다.{' '}
                       전체 이미지는 버튼을 눌러 모달에서 세로 스크롤로 확인할 수 있어요.
                     </p>
                     <button
@@ -452,79 +520,91 @@ function App() {
               </article>
             )}
 
-              {categoryScores.length > 0 && (
-                <article className="card">
-                  <h2>카테고리 점수</h2>
-                  <div className="score-grid">
-                    {categoryScores.map((category) => (
-                      <div
-                        key={category.id}
-                        className={`score-card score-card--${getScoreBand(category.score)}`}
-                      >
-                        <p className="score-card__label">{category.title}</p>
-                        <p className="score-card__value">{formatScore(category.score)}</p>
-                        <span className="score-card__suffix">점</span>
-                      </div>
-                    ))}
-                  </div>
-                </article>
-              )}
+            {categoryScores.length > 0 && (
+              <article className="card">
+                <h2>카테고리 점수</h2>
+                <div className="score-grid">
+                  {categoryScores.map((category) => (
+                    <div
+                      key={category.id}
+                      className={`score-card score-card--${getScoreBand(category.score)}`}
+                    >
+                      <p className="score-card__label">{category.title}</p>
+                      <p className="score-card__value">{formatScore(category.score)}</p>
+                      <span className="score-card__suffix">점</span>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            )}
 
-              {labMetrics.length > 0 && (
-                <article className="card">
-                  <h2>실험실 데이터</h2>
-                  <div className="metric-grid">
-                    {labMetrics.map((metric) => (
-                      <div
-                        key={metric.id}
-                        className={`metric metric--${getScoreBand(metric.score)}`}
-                      >
-                        <p className="metric__label">{metric.label}</p>
-                        <p className="metric__value">{metric.displayValue}</p>
-                      </div>
-                    ))}
-                  </div>
-                </article>
-              )}
+            {labMetrics.length > 0 && (
+              <article className="card">
+                <h2>실험실 데이터</h2>
+                <div className="metric-grid">
+                  {labMetrics.map((metric) => (
+                    <div
+                      key={metric.id}
+                      className={`metric metric--${getScoreBand(metric.score)}`}
+                    >
+                      <p className="metric__label">{metric.label}</p>
+                      <p className="metric__value">{metric.displayValue}</p>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            )}
 
-              {fieldMetrics.length > 0 && (
-                <article className="card">
-                  <h2>실제 사용자 데이터 (CrUX)</h2>
-                  <div className="metric-grid metric-grid--field">
-                    {fieldMetrics.map((metric) => (
-                      <div
-                        key={metric.id}
-                        className={`metric metric--field metric--${metric.categoryClass}`}
-                      >
-                        <p className="metric__label">{metric.label}</p>
-                        <p className="metric__value">{metric.value}</p>
-                        <span className="metric__chip">{metric.categoryLabel}</span>
-                      </div>
-                    ))}
-                  </div>
-                </article>
-              )}
+            {fieldMetrics.length > 0 && (
+              <article className="card">
+                <h2>실제 사용자 데이터 (CrUX)</h2>
+                <div className="metric-grid metric-grid--field">
+                  {fieldMetrics.map((metric) => (
+                    <div
+                      key={metric.id}
+                      className={`metric metric--field metric--${metric.categoryClass}`}
+                    >
+                      <p className="metric__label">{metric.label}</p>
+                      <p className="metric__value">{metric.value}</p>
+                      <span className="metric__chip">{metric.categoryLabel}</span>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            )}
 
-              {opportunities.length > 0 && (
-                <article className="card">
-                  <h2>개선 기회</h2>
-                  <div className="opportunity-list">
-                    {opportunities.map((item) => (
-                      <div key={item.id} className="opportunity">
-                        <div>
-                          <p className="opportunity__title">{item.title}</p>
-                          {item.description && (
-                            <p className="opportunity__description">{item.description}</p>
-                          )}
-                        </div>
-                        <p className="opportunity__savings">
-                          예상 절약: {formatMilliseconds(item.savings)}
-                        </p>
+            {opportunities.length > 0 && (
+              <article className="card">
+                <h2>개선 기회</h2>
+                <div className="opportunity-list">
+                  {opportunities.map((item) => (
+                    <div key={item.id} className="opportunity">
+                      <div>
+                        <p className="opportunity__title">{item.title}</p>
+                        {item.description && (
+                          <p className="opportunity__description">{item.description}</p>
+                        )}
+                        {item.sources.length > 0 && (
+                          <div className="opportunity__sources">
+                            <p className="opportunity__sources-label">관련 리소스</p>
+                            <ul className="opportunity__sources-list">
+                              {item.sources.map((source) => (
+                                <li key={source} className="opportunity__source-item">
+                                  {source}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                </article>
-              )}
+                      <p className="opportunity__savings">
+                        예상 절약: {formatMilliseconds(item.savings)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            )}
           </section>
         )}
       </div>
@@ -543,6 +623,25 @@ function App() {
             </button>
             <div className="modal__image-wrapper">
               <img src={screenshotSrc} alt="전체 페이지 스크린샷" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showJsonModal && result && (
+        <div className="modal" role="dialog" aria-modal="true" aria-label="응답 데이터(JSON)">
+          <div className="modal__backdrop" onClick={() => setShowJsonModal(false)} />
+          <div className="modal__content modal__content--code">
+            <button
+              type="button"
+              className="modal__close"
+              aria-label="닫기"
+              onClick={() => setShowJsonModal(false)}
+            >
+              ×
+            </button>
+            <div className="modal__code-wrapper">
+              <pre>{prettyResult}</pre>
             </div>
           </div>
         </div>

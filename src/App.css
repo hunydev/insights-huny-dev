@@ -220,6 +220,13 @@
   background: rgba(241, 245, 249, 0.8);
 }
 
+.button--compact {
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+  border-radius: 10px;
+  line-height: 1.2;
+}
+
 .status {
   margin: 0;
   padding: 0.95rem 1.2rem;
@@ -238,6 +245,14 @@
   display: flex;
   flex-direction: column;
   gap: clamp(1.5rem, 2vw, 2.25rem);
+}
+
+.results__meta-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .results__meta {
@@ -482,6 +497,37 @@
   color: #1d4ed8;
 }
 
+.opportunity__sources {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.opportunity__sources-label {
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.opportunity__sources-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  color: #334155;
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+.opportunity__source-item {
+  list-style: disc;
+}
+
 .modal {
   position: fixed;
   inset: 0;
@@ -534,6 +580,31 @@
   width: 100%;
   height: auto;
   border-radius: 12px;
+}
+
+.modal__content--code {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.modal__code-wrapper {
+  flex: 1;
+  margin-top: 2.3rem;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.7);
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  overflow: auto;
+}
+
+.modal__code-wrapper pre {
+  margin: 0;
+  font-family: 'Fira Code', 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #e2e8f0;
 }
 
 @media (max-width: 880px) {
