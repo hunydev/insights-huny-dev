@@ -1,4 +1,10 @@
 [[redirects]]
+  from = "/capture"
+  to = "/.netlify/functions/capture"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
